@@ -2,16 +2,24 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
-type Product struct {
+type Credential struct {
 	gorm.Model
-	Code  string
-	Price uint
+	Credential_ID string `json:credential_id`
+	Subject       string `json:subject`
+	Claim         string `json:claim`
+	Issuer        string `json:issuer`
+	Holder        string `json:holder`
+	Start_Time    string `json:start_time`
+	End_Time      string `json:end_time`
+	// Code string `json:code`
+	// Price         uint   `json:price`
 }
 
 type RootHandlerResponse struct {
@@ -31,27 +39,37 @@ func respondWithError(w http.ResponseWriter, code int, message string) {
 }
 
 func RootHandler(w http.ResponseWriter, r *http.Request) {
-	db, err := gorm.Open(sqlite.Open("mydatabase.db"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("credential.db"), &gorm.Config{})
 	if err != nil {
 		panic("failed to connect database")
 	}
 
+	db.AutoMigrate(&Credential{})
+
 	// Create
-	db.Create(&Product{Code: "D42", Price: 100})
+	db.Create(&Credential{Credential_ID: "1", Subject: "D42", Claim: "claim", Issuer: "issuer", Holder: "holder", Start_Time: "start_time", End_Time: "end_time"})
 
 	// Read
-	var product Product
-	db.First(&product, 1)                 // find product with integer primary key
-	db.First(&product, "code = ?", "D42") // find product with code D42
+	var credential Credential
+	// db.First(&product, 1)                 // IDが1のレコードを取得
+	db.First(&credential, "Subject = ?", "D42") // find product with code D42
 
 	// Update - update product's price to 200
-	db.Model(&product).Update("Price", 200)
+	// db.Model(&credential).Update("Price", 200)
 	// Update - update multiple fields
-	db.Model(&product).Updates(Product{Price: 200, Code: "F42"}) // non-zero fields
-	db.Model(&product).Updates(map[string]interface{}{"Price": 200, "Code": "F42"})
+	db.Model(&credential).Updates(Credential{Subject: "F42"}) // non-zero fields
+	db.Model(&credential).Updates(map[string]interface{}{"Subject": "F42"})
 
-	// Delete - delete product
-	db.Delete(&product, 1)
+	var credentials []Credential
+	db.Find(&credentials)
+	// db.Where("1=1").Delete(&Credential{})
+	respondWithJSON(w, credentials)
+
+	// IDが1のレコードを削除
+
+	for i := 0; i < len(credentials); i++ {
+		fmt.Println(credentials[i])
+	}
 
 	// response := RootHandlerResponse{
 	// 	Message: "Hello, world!",

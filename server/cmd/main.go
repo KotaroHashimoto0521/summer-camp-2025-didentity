@@ -40,15 +40,16 @@ func (s *Server) Start() {
 }
 
 func main() {
-	server := NewServer()
-	server.RegisterHandler("/", handler.RootHandler)
-	server.Start()
-	db, err := gorm.Open(sqlite.Open("mydatabase.db"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("credential.db"), &gorm.Config{})
 	if err != nil {
 		panic("failed to connect database")
 	}
 
 	// Migrate the schema
-	db.AutoMigrate(&handler.Product{})
+	db.AutoMigrate(&handler.Credential{})
+
+	server := NewServer()
+	server.RegisterHandler("/", handler.RootHandler)
+	server.Start()
 
 }
