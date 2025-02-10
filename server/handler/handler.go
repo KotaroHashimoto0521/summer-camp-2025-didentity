@@ -22,6 +22,8 @@ type Credential struct {
 	// Price         uint   `json:price`
 }
 
+var credentials []Credential
+
 type RootHandlerResponse struct {
 	Message string `json:"message"`
 }
@@ -60,7 +62,7 @@ func RootHandler(w http.ResponseWriter, r *http.Request) {
 	db.Model(&credential).Updates(Credential{Subject: "F42"}) // non-zero fields
 	db.Model(&credential).Updates(map[string]interface{}{"Subject": "F42"})
 
-	var credentials []Credential
+	// var credentials []Credential
 	db.Find(&credentials)
 	// db.Where("1=1").Delete(&Credential{})
 	respondWithJSON(w, credentials)
