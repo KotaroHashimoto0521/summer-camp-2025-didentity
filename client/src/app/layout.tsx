@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Verifiable Bussiness Card",
-  description: "Verifiable Bussiness Card",
+  title: "Cerdential Issuer Service",
+  description: "Cerdential Issuer Service",
 };
 
 export default function RootLayout({
