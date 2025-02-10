@@ -4,6 +4,9 @@ import (
 	"log"
 	"net/http"
 	"summer-camp-2024-didentity/server/handler"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 type Server struct {
@@ -40,4 +43,12 @@ func main() {
 	server := NewServer()
 	server.RegisterHandler("/", handler.RootHandler)
 	server.Start()
+	db, err := gorm.Open(sqlite.Open("mydatabase.db"), &gorm.Config{})
+	if err != nil {
+		panic("failed to connect database")
+	}
+
+	// Migrate the schema
+	db.AutoMigrate(&handler.Product{})
+
 }
