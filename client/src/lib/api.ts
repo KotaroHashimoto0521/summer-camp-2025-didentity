@@ -1,18 +1,17 @@
 // Credentialを追加する際にAPIに渡すデータの型を定義
 export interface NewCredentialPayload {
-    credential_id: string;
-    subject: string;
-    // 他に必要なフィールドがあればここに追加
+    credential_name: string;
+    claim: string;
+    holder: string;
 }
 
 export type FetchedCredentialType = {
-    Credential_ID: string
-    Subject: string
-    Claim: string
-    Issuer: string
-    Holder: string
-    Start_Time: string
-    End_Time: string
+    Credential_Name: string;
+    Claim: string;
+    Holder: string;
+    Issuer: string;
+    Start_Time: string;
+    End_Time: string;
 }
 
 // Credentialリストを取得するリクエスト

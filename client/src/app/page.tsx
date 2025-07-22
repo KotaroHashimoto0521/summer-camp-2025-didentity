@@ -1,60 +1,53 @@
 "use client";
 import { useState, useEffect, FormEvent } from "react";
-// 修正したapi.tsからNewCredentialPayloadもインポート
 import { getCredentials, addCredential, FetchedCredentialType, NewCredentialPayload } from '../lib/api';
 
-// フロントエンドで扱うCredentialの型定義
+// フロントエンドで扱うCredentialの型を新しい仕様に変更
 interface Credential {
-  credential_id: string;
-  subject: string;
+  credential_name: string;
   claim: string;
-  issuer: string;
   holder: string;
+  issuer: string;
   start_Time: string;
   end_Time: string;
 }
 
-// バックエンドから受け取ったデータをフロントエンド用の型に変換する関数
+// バックエンドからのデータをフロントエンド用に変換する関数を修正
 function convertFetchedCredentialToCredential(fetchedCredential: FetchedCredentialType): Credential {
   return {
-    credential_id: fetchedCredential.Credential_ID,
-    subject: fetchedCredential.Subject,
+    credential_name: fetchedCredential.Credential_Name,
     claim: fetchedCredential.Claim,
-    issuer: fetchedCredential.Issuer,
     holder: fetchedCredential.Holder,
+    issuer: fetchedCredential.Issuer,
     start_Time: fetchedCredential.Start_Time,
     end_Time: fetchedCredential.End_Time
   };
 }
 
 export default function Home() {
-  // 表示するCredentialのリスト
   const [credentials, setCredentials] = useState<Credential[]>([]);
   
-  // フォームの入力値を単一のオブジェクトで管理
+  // フォームの入力値を管理するstateを新しい仕様に変更
   const [formData, setFormData] = useState({
-    credential_id: '',
-    subject: ''
+    credential_name: '',
+    claim: '',
+    holder: ''
   });
 
-  // ローディング状態を管理
   const [isLoading, setIsLoading] = useState(true);
-  // エラーメッセージを管理
   const [error, setError] = useState<string | null>(null);
 
-  // 初回レンダリング時にデータを取得
+  // 初回レンダリング時のデータ取得ロジックは変更ありません
   useEffect(() => {
     const fetchCredentials = async () => {
       try {
         setIsLoading(true);
         setError(null);
         const data = await getCredentials();
-        // バックエンドからのデータが配列であることを確認
         if (Array.isArray(data)) {
           const fetched_credentials = data.map(convertFetchedCredentialToCredential);
           setCredentials(fetched_credentials);
         } else {
-          // データが期待した形式でない場合
           setCredentials([]);
         }
       } catch (err) {
@@ -67,40 +60,39 @@ export default function Home() {
     fetchCredentials();
   }, []);
 
-  // フォームの入力値をハンドルする関数
+  // フォーム入力のハンドリングは変更ありません
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { id, value } = e.target;
     setFormData(prev => ({ ...prev, [id]: value }));
   };
 
-  // Credentialを追加する処理
+  // Credential追加処理を新しい仕様に合わせて修正
   const handleAddCredential = async (e: FormEvent) => {
-    e.preventDefault(); // formのデフォルトの送信動作を防ぐ
-    if (formData.credential_id.trim() === '' || formData.subject.trim() === '') {
-      alert("IDとSubjectの両方を入力してください。");
+    e.preventDefault();
+    // 入力チェックを3つのフィールドに対して行う
+    if (formData.credential_name.trim() === '' || formData.claim.trim() === '' || formData.holder.trim() === '') {
+      alert("Name, Claim, Holderのすべてを入力してください。");
       return;
     }
 
     try {
       // APIに送信するデータを作成
       const newCredentialPayload: NewCredentialPayload = {
-        credential_id: formData.credential_id,
-        subject: formData.subject,
+        credential_name: formData.credential_name,
+        claim: formData.claim,
+        holder: formData.holder,
       };
       
-      // 修正したaddCredentialを呼び出す
       const fetchedCredential = await addCredential(newCredentialPayload);
       const addedCredential = convertFetchedCredentialToCredential(fetchedCredential);
 
-      // 状態を更新してリストに即時反映
       setCredentials(prevCredentials => [...prevCredentials, addedCredential]);
 
       // 入力フィールドをリセット
-      setFormData({ credential_id: '', subject: '' });
+      setFormData({ credential_name: '', claim: '', holder: '' });
 
-    } catch (err: any) { // any型でエラーを受け取る
+    } catch (err: any) {
       console.error("Adding credential failed:", err);
-      // エラーオブジェクトにメッセージがあればそれを表示、なければ汎用メッセージを表示
       if (err && err.message) {
           alert(err.message);
       } else {
@@ -109,41 +101,62 @@ export default function Home() {
     }
   };
 
+  // 画面表示(JSX)を新しい仕様に合わせて修正
   return (
-    <main style={{ padding: '2rem' }}>
+    <main style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
       <div>
-        <h1>Credential List</h1>
+        <h1>Issuer Page</h1>
+        <h2>Already Existing Credential List</h2>
         {isLoading && <p>Loading...</p>}
         {error && <p style={{ color: 'red' }}>{error}</p>}
         <ul>
           {credentials.map((credential) => (
-            <li key={credential.credential_id}>
-              ID: {credential.credential_id} - Subject: {credential.subject}
+            <li key={credential.credential_name}>
+              Name: {credential.credential_name} - Claim: {credential.claim} - Holder: {credential.holder}
             </li>
           ))}
         </ul>
-
+        <hr />
+        <h2>Add Credential Form</h2>
         <form onSubmit={handleAddCredential}>
           <div style={{ margin: '1rem 0' }}>
-            <input
-              id="credential_id"
-              type="text"
-              placeholder="Enter Credential ID"
-              value={formData.credential_id}
-              onChange={handleInputChange}
-              style={{ marginRight: '0.5rem' }}
-            />
-            <input
-              id="subject"
-              type="text"
-              placeholder="Enter Subject"
-              value={formData.subject}
-              onChange={handleInputChange}
-              style={{ marginRight: '0.5rem' }}
-            />
-            <button type="submit">Add Credential</button>
+            <div>
+              <h3>Credential Name</h3>
+              <input
+                id="credential_name"
+                type="text"
+                placeholder="Enter Credential Name"
+                value={formData.credential_name}
+                onChange={handleInputChange}
+              />
+            </div>
+            <div style={{ marginTop: '1rem' }}>
+              <h3>Claim</h3>
+              <input
+                id="claim"
+                type="text"
+                placeholder="Enter Claim"
+                value={formData.claim}
+                onChange={handleInputChange}
+              />
+            </div>
+            <div style={{ marginTop: '1rem' }}>
+              <h3>Holder</h3>
+              <input
+                id="holder"
+                type="text"
+                placeholder="Enter Holder"
+                value={formData.holder}
+                onChange={handleInputChange}
+              />
+            </div>
+            <hr style={{ margin: '1.5rem 0' }} />
+            <button type="submit">IssuerがVCを発行！</button>
           </div>
         </form>
+        <hr />
+        <h1>Holder Page</h1>
+        <h1>Verifier Page</h1>
       </div>
     </main>
   );

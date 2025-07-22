@@ -9,21 +9,21 @@ import (
 	"gorm.io/gorm"
 )
 
-// Credential はデータベースのテーブルとJSONの構造を定義します。
-// フロントエンドの `FetchedCredentialType` とキー名を完全に一致させます。
+// Credential 構造体を新しい仕様に合わせて変更
 type Credential struct {
-	// gorm.Model を含めることで、ID, CreatedAt, UpdatedAt, DeletedAt フィールドが自動的に追加されます。
 	gorm.Model
-	Credential_ID string `json:"Credential_ID" gorm:"uniqueIndex"` // フロントエンドの期待するキー名に修正
-	Subject       string `json:"Subject"`                          // フロントエンドの期待するキー名に修正
-	Claim         string `json:"Claim"`                            // フロントエンドの期待するキー名に修正
-	Issuer        string `json:"Issuer"`                           // フロントエンドの期待するキー名に修正
-	Holder        string `json:"Holder"`                           // フロントエンドの期待するキー名に修正
-	Start_Time    string `json:"Start_Time"`                       // フロントエンドの期待するキー名に修正
-	End_Time      string `json:"End_Time"`                         // フロントエンドの期待するキー名に修正
+	// フィールド名を credential_id から credential_name に変更
+	Credential_Name string `json:"Credential_Name" gorm:"uniqueIndex"`
+	// subject を claim に変更
+	Claim string `json:"Claim"`
+	// holder は元々あったのでそのまま
+	Holder     string `json:"Holder"`
+	Issuer     string `json:"Issuer"`
+	Start_Time string `json:"Start_Time"`
+	End_Time   string `json:"End_Time"`
 }
 
-// GetCredentialsHandler はすべてのCredentialを取得してJSONで返します。
+// GetCredentialsHandler は変更ありません
 func GetCredentialsHandler(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var credentials []Credential
@@ -37,13 +37,14 @@ func GetCredentialsHandler(db *gorm.DB) http.HandlerFunc {
 	}
 }
 
-// AddCredentialHandler は新しいCredentialをデータベースに追加します。
+// AddCredentialHandler を修正して、新しい入力フィールドに対応します
 func AddCredentialHandler(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// リクエストボディから受け取るための仮の構造体
+		// リクエストボディから受け取るための構造体を変更
 		var requestBody struct {
-			Credential_ID string `json:"credential_id"`
-			Subject       string `json:"subject"`
+			Credential_Name string `json:"credential_name"`
+			Claim           string `json:"claim"`
+			Holder          string `json:"holder"`
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
@@ -53,26 +54,26 @@ func AddCredentialHandler(db *gorm.DB) http.HandlerFunc {
 
 		// データベースに保存するCredentialオブジェクトを作成
 		newCredential := Credential{
-			Credential_ID: requestBody.Credential_ID,
-			Subject:       requestBody.Subject,
-			// 固定値や計算値で他のフィールドを埋める
-			Claim:      "Sample Claim",
+			Credential_Name: requestBody.Credential_Name,
+			Claim:           requestBody.Claim,
+			Holder:          requestBody.Holder,
+			// Issuer と時間はサーバー側で設定
 			Issuer:     "Go-Server",
-			Holder:     "User",
 			Start_Time: time.Now().Format(time.RFC3339),
 			End_Time:   time.Now().Add(24 * time.Hour).Format(time.RFC3339),
 		}
 
+		// データベースへの作成処理
 		if err := db.Create(&newCredential).Error; err != nil {
-			// エラーがIDの重複によるものかチェック
+			// 重複エラーのチェック
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-				// IDが重複している場合、専用のエラーメッセージとステータスコード409を返す
 				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusConflict) // 409 Conflict
-				json.NewEncoder(w).Encode(map[string]string{"message": "このCredential IDは既に使用されています。"})
+				w.WriteHeader(http.StatusConflict)
+				// エラーメッセージを分かりやすく変更
+				json.NewEncoder(w).Encode(map[string]string{"message": "このCredential Nameは既に使用されています。"})
 				return
 			}
-			// その他のデータベースエラーの場合
+			// その他のデータベースエラー
 			http.Error(w, "Could not create credential", http.StatusInternalServerError)
 			return
 		}
