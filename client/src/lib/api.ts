@@ -1,3 +1,10 @@
+// Credentialを追加する際にAPIに渡すデータの型を定義
+export interface NewCredentialPayload {
+    credential_id: string;
+    subject: string;
+    // 他に必要なフィールドがあればここに追加
+}
+
 export type FetchedCredentialType = {
     Credential_ID: string
     Subject: string
@@ -8,22 +15,44 @@ export type FetchedCredentialType = {
     End_Time: string
 }
 
-// Todoリストを取得するリクエスト
-export const getCredentials:()=>Promise<FetchedCredentialType[]> = async () => {
-    const response = await fetch('http://localhost:8080/credentials');
-    // return response.json();
-    const hoge = await response.json();
-    return hoge;
+// Credentialリストを取得するリクエスト
+export const getCredentials = async (): Promise<FetchedCredentialType[]> => {
+    // エラーハンドリングを追加
+    try {
+        const response = await fetch('http://localhost:8080/credentials');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        // バックエンドから返されるデータがnullの場合も考慮して空配列を返す
+        return data || [];
+    } catch (error) {
+        console.error("Failed to fetch credentials:", error);
+        return []; // エラーが発生した場合は空のリストを返す
+    }
 };
 
-// Todoリストに追加するリクエスト
-export const addCredential:(text:string)=>Promise<FetchedCredentialType> = async (text: string) => {
+// Credentialを追加するリクエスト
+// 引数をオブジェクトに変更
+export const addCredential = async (credential: NewCredentialPayload): Promise<FetchedCredentialType> => {
     const response = await fetch('http://localhost:8080/credentials', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        // オブジェクトをJSON文字列に変換して送信
+        body: JSON.stringify(credential),
     });
-    // return response.json();
-    const hoge = await response.json();
-    return hoge;
+
+    if (!response.ok) {
+        // レスポンスがOKでない場合、JSONボディからエラーメッセージを取得
+        const errorData = await response.json().catch(() => ({ message: 'サーバーからエラーが返されましたが、内容を解析できませんでした。' }));
+        // ステータスコードとメッセージを含むオブジェクトをthrowする
+        throw { 
+            message: errorData.message || '不明なエラーが発生しました。',
+            status: response.status 
+        };
+    }
+
+    return response.json();
 };

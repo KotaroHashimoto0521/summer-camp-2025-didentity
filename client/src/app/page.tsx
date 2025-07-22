@@ -1,9 +1,9 @@
 "use client";
-import { useState, useEffect } from "react";
-import { getCredentials, addCredential, FetchedCredentialType } from '../lib/api';
+import { useState, useEffect, FormEvent } from "react";
+// 修正したapi.tsからNewCredentialPayloadもインポート
+import { getCredentials, addCredential, FetchedCredentialType, NewCredentialPayload } from '../lib/api';
 
-
-
+// フロントエンドで扱うCredentialの型定義
 interface Credential {
   credential_id: string;
   subject: string;
@@ -12,134 +12,138 @@ interface Credential {
   holder: string;
   start_Time: string;
   end_Time: string;
-};
+}
 
-
-function convertFetchedCrendentialToCredential(fetchCredential: FetchedCredentialType) {
-  const credential: Credential = {
-  credential_id: fetchCredential.Credential_ID,
-  subject: fetchCredential.Subject,
-  claim: fetchCredential.Claim,
-  issuer: fetchCredential.Issuer,
-  holder: fetchCredential.Holder,
-  start_Time: fetchCredential.Start_Time,
-  end_Time: fetchCredential.End_Time
+// バックエンドから受け取ったデータをフロントエンド用の型に変換する関数
+function convertFetchedCredentialToCredential(fetchedCredential: FetchedCredentialType): Credential {
+  return {
+    credential_id: fetchedCredential.Credential_ID,
+    subject: fetchedCredential.Subject,
+    claim: fetchedCredential.Claim,
+    issuer: fetchedCredential.Issuer,
+    holder: fetchedCredential.Holder,
+    start_Time: fetchedCredential.Start_Time,
+    end_Time: fetchedCredential.End_Time
   };
-  return credential;
 }
 
 export default function Home() {
-    // const [credentials, setCredentials] = useState<Credential>(
-    //   {credential_id: "", 
-    //       subject: "",
-    //       claim: "",
-    //     issuer: "",
-    //     holder: "",
-    //     start_Time: "",
-    //     end_Time: ""
-    //   }
-    // );
-  //   const [vc, setVC] = useState<string>("");
-  //   const [vp, setVP] = useState<string>("");
-
+  // 表示するCredentialのリスト
   const [credentials, setCredentials] = useState<Credential[]>([]);
-  const [newCredential, setNewCredential] = useState<FetchedCredentialType>();
+  
+  // フォームの入力値を単一のオブジェクトで管理
+  const [formData, setFormData] = useState({
+    credential_id: '',
+    subject: ''
+  });
 
-  const [newCredentialId, setNewCredentialId] = useState<string>('');
-  const [newSubject, setNewSubject] = useState<string>('');
-  // const [newClaim, setNewClaim] = useState<string>('');
+  // ローディング状態を管理
+  const [isLoading, setIsLoading] = useState(true);
+  // エラーメッセージを管理
+  const [error, setError] = useState<string | null>(null);
 
-  // 初回レンダリングのデータ取得
+  // 初回レンダリング時にデータを取得
   useEffect(() => {
     const fetchCredentials = async () => {
-      const data = await getCredentials();
-      const fetched_credentials = data.map(credential => convertFetchedCrendentialToCredential(credential));
-      setCredentials(fetched_credentials);
+      try {
+        setIsLoading(true);
+        setError(null);
+        const data = await getCredentials();
+        // バックエンドからのデータが配列であることを確認
+        if (Array.isArray(data)) {
+          const fetched_credentials = data.map(convertFetchedCredentialToCredential);
+          setCredentials(fetched_credentials);
+        } else {
+          // データが期待した形式でない場合
+          setCredentials([]);
+        }
+      } catch (err) {
+        console.error("Fetching credentials failed:", err);
+        setError("データの取得に失敗しました。");
+      } finally {
+        setIsLoading(false);
+      }
     };
     fetchCredentials();
   }, []);
 
-  // //Todoを追加する処理
-  // const handleAddCredential = async () => {
-  //   if (newCredential.trim() === '') return;
-  //   const fetchedCredential = await addCredential(newCredential);
-  //   const addedCredential=convertFetchedCrendentialToCredential(fetchedCredential);
-  //   setCredentials([...credentials, addedCredential]);
-  //   setNewCredential('');
-  // };
+  // フォームの入力値をハンドルする関数
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { id, value } = e.target;
+    setFormData(prev => ({ ...prev, [id]: value }));
+  };
 
-  // Todoを追加する処理
-  const handleAddCredential = async () => {
-    // if (newCredentialId.trim() === '' || newSubject.trim() === '') 
-    //   return;
+  // Credentialを追加する処理
+  const handleAddCredential = async (e: FormEvent) => {
+    e.preventDefault(); // formのデフォルトの送信動作を防ぐ
+    if (formData.credential_id.trim() === '' || formData.subject.trim() === '') {
+      alert("IDとSubjectの両方を入力してください。");
+      return;
+    }
 
-    // バックエンドに送るデータを作成
-    const newCredential: Credential = {
-      credential_id: '',
-      subject: '',
-      claim: '',
-      issuer: '',
-      holder: '',
-      start_Time: '',
-      end_Time: ''
-      // Credential_ID: newCredentialId ,
-      // Subject: newSubject,
-      // Claim: string
-      // Issuer: string
-      // Holder: string
-      // Start_Time: string
-      // End_Time: string
-    };
+    try {
+      // APIに送信するデータを作成
+      const newCredentialPayload: NewCredentialPayload = {
+        credential_id: formData.credential_id,
+        subject: formData.subject,
+      };
+      
+      // 修正したaddCredentialを呼び出す
+      const fetchedCredential = await addCredential(newCredentialPayload);
+      const addedCredential = convertFetchedCredentialToCredential(fetchedCredential);
 
-    // API呼び出し
-    const fetchedCredential = await addCredential(newCredential.subject);
-    const addedCredential = convertFetchedCrendentialToCredential(fetchedCredential);
+      // 状態を更新してリストに即時反映
+      setCredentials(prevCredentials => [...prevCredentials, addedCredential]);
 
-    // // 状態を更新
-    // setCredentials([...credentials, addedCredential]);
+      // 入力フィールドをリセット
+      setFormData({ credential_id: '', subject: '' });
 
-    // // 入力フィールドをリセット
-    // setNewCredentialId('');
-    // setNewSubject('');
+    } catch (err: any) { // any型でエラーを受け取る
+      console.error("Adding credential failed:", err);
+      // エラーオブジェクトにメッセージがあればそれを表示、なければ汎用メッセージを表示
+      if (err && err.message) {
+          alert(err.message);
+      } else {
+          alert("Credentialの追加に失敗しました。");
+      }
+    }
   };
 
   return (
-    <main>
+    <main style={{ padding: '2rem' }}>
       <div>
         <h1>Credential List</h1>
+        {isLoading && <p>Loading...</p>}
+        {error && <p style={{ color: 'red' }}>{error}</p>}
         <ul>
-          
           {credentials.map((credential) => (
             <li key={credential.credential_id}>
-              {credential.credential_id}
-              {credential.subject}
-              {credential.claim}
-              {credential.issuer}
-              {credential.holder}
-              {credential.start_Time}
-              {credential.end_Time}
+              ID: {credential.credential_id} - Subject: {credential.subject}
             </li>
           ))}
         </ul>
 
-        <input
-          id="credential_id"
-          type="text"
-          value={newCredentialId}
-          onChange={(e) => setNewCredentialId(e.target.value)}
-        />
-        <input
-          id="subject"
-          type="text"
-          value={newSubject}
-          onChange={(f) => setNewSubject(f.target.value)}
-        />
-        {/* <h3>ID: {credentials.credential_ID}</h3>
-        <input id="credential_ID" type="text" onChange={(e) => setNewCredential((prev) => ({
-          ...prev,
-          credential_ID: e.target.value,
-        }))}></input> */}
-        <button onClick={handleAddCredential}>Add Credential</button>
+        <form onSubmit={handleAddCredential}>
+          <div style={{ margin: '1rem 0' }}>
+            <input
+              id="credential_id"
+              type="text"
+              placeholder="Enter Credential ID"
+              value={formData.credential_id}
+              onChange={handleInputChange}
+              style={{ marginRight: '0.5rem' }}
+            />
+            <input
+              id="subject"
+              type="text"
+              placeholder="Enter Subject"
+              value={formData.subject}
+              onChange={handleInputChange}
+              style={{ marginRight: '0.5rem' }}
+            />
+            <button type="submit">Add Credential</button>
+          </div>
+        </form>
       </div>
     </main>
   );

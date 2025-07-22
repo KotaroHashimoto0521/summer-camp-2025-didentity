@@ -2,83 +2,83 @@ package handler
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
+	"strings"
+	"time"
 
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
+// Credential はデータベースのテーブルとJSONの構造を定義します。
+// フロントエンドの `FetchedCredentialType` とキー名を完全に一致させます。
 type Credential struct {
+	// gorm.Model を含めることで、ID, CreatedAt, UpdatedAt, DeletedAt フィールドが自動的に追加されます。
 	gorm.Model
-	Credential_ID string `json:credential_id`
-	Subject       string `json:subject`
-	Claim         string `json:claim`
-	Issuer        string `json:issuer`
-	Holder        string `json:holder`
-	Start_Time    string `json:start_time`
-	End_Time      string `json:end_time`
-	// Code string `json:code`
-	// Price         uint   `json:price`
+	Credential_ID string `json:"Credential_ID" gorm:"uniqueIndex"` // フロントエンドの期待するキー名に修正
+	Subject       string `json:"Subject"`                          // フロントエンドの期待するキー名に修正
+	Claim         string `json:"Claim"`                            // フロントエンドの期待するキー名に修正
+	Issuer        string `json:"Issuer"`                           // フロントエンドの期待するキー名に修正
+	Holder        string `json:"Holder"`                           // フロントエンドの期待するキー名に修正
+	Start_Time    string `json:"Start_Time"`                       // フロントエンドの期待するキー名に修正
+	End_Time      string `json:"End_Time"`                         // フロントエンドの期待するキー名に修正
 }
 
-var credentials []Credential
+// GetCredentialsHandler はすべてのCredentialを取得してJSONで返します。
+func GetCredentialsHandler(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var credentials []Credential
+		if err := db.Find(&credentials).Error; err != nil {
+			http.Error(w, "Could not get credentials", http.StatusInternalServerError)
+			return
+		}
 
-type RootHandlerResponse struct {
-	Message string `json:"message"`
-}
-
-func respondWithJSON(w http.ResponseWriter, response interface{}) error {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	return json.NewEncoder(w).Encode(response)
-}
-
-func respondWithError(w http.ResponseWriter, code int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(map[string]string{"error": message})
-}
-
-func RootHandler(w http.ResponseWriter, r *http.Request) {
-	db, err := gorm.Open(sqlite.Open("credential.db"), &gorm.Config{})
-	if err != nil {
-		panic("failed to connect database")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(credentials)
 	}
+}
 
-	db.AutoMigrate(&Credential{})
+// AddCredentialHandler は新しいCredentialをデータベースに追加します。
+func AddCredentialHandler(db *gorm.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// リクエストボディから受け取るための仮の構造体
+		var requestBody struct {
+			Credential_ID string `json:"credential_id"`
+			Subject       string `json:"subject"`
+		}
 
-	// Create
-	db.Create(&Credential{Credential_ID: "1", Subject: "D42", Claim: "claim", Issuer: "issuer", Holder: "holder", Start_Time: "start_time", End_Time: "end_time"})
+		if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 
-	// Read
-	var credential Credential
-	// db.First(&product, 1)                 // IDが1のレコードを取得
-	db.First(&credential, "Subject = ?", "D42") // find product with code D42
+		// データベースに保存するCredentialオブジェクトを作成
+		newCredential := Credential{
+			Credential_ID: requestBody.Credential_ID,
+			Subject:       requestBody.Subject,
+			// 固定値や計算値で他のフィールドを埋める
+			Claim:      "Sample Claim",
+			Issuer:     "Go-Server",
+			Holder:     "User",
+			Start_Time: time.Now().Format(time.RFC3339),
+			End_Time:   time.Now().Add(24 * time.Hour).Format(time.RFC3339),
+		}
 
-	// Update - update product's price to 200
-	// db.Model(&credential).Update("Price", 200)
-	// Update - update multiple fields
-	db.Model(&credential).Updates(Credential{Subject: "F42"}) // non-zero fields
-	db.Model(&credential).Updates(map[string]interface{}{"Subject": "F42"})
+		if err := db.Create(&newCredential).Error; err != nil {
+			// エラーがIDの重複によるものかチェック
+			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+				// IDが重複している場合、専用のエラーメッセージとステータスコード409を返す
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusConflict) // 409 Conflict
+				json.NewEncoder(w).Encode(map[string]string{"message": "このCredential IDは既に使用されています。"})
+				return
+			}
+			// その他のデータベースエラーの場合
+			http.Error(w, "Could not create credential", http.StatusInternalServerError)
+			return
+		}
 
-	// var credentials []Credential
-	db.Find(&credentials)
-	// db.Where("1=1").Delete(&Credential{})
-	respondWithJSON(w, credentials)
-
-	// IDが1のレコードを削除
-
-	for i := 0; i < len(credentials); i++ {
-		fmt.Println(credentials[i])
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(newCredential)
 	}
-
-	// response := RootHandlerResponse{
-	// 	Message: "Hello, world!",
-	// }
-	// err := respondWithJSON(w, response)
-	// if err != nil {
-	// 	log.Printf("Failed to respond with JSON: %v", err)
-	// 	respondWithError(w, http.StatusInternalServerError, "Failed to respond with JSON")
-	// }
 }
