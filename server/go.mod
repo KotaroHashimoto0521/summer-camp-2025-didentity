@@ -3,6 +3,7 @@ module summer-camp-2025-didentity/server
 go 1.23.0
 
 require (
+	github.com/btcsuite/btcd/btcutil v1.1.6
 	gorm.io/driver/sqlite v1.5.7
 	gorm.io/gorm v1.25.12
 )
