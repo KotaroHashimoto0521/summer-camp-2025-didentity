@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/big" // math/bigをインポート
 	"net/http"
 	"os"
 	"strings"
@@ -17,7 +18,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// --- VC発行に必要な構造体 ---
+// --- VC発行に必要な構造体 (変更なし) ---
 type JwtHeader struct {
 	Kid string `json:"kid"`
 }
@@ -34,7 +35,7 @@ type VerifiableCredentials struct {
 	Subject *SubjectClaim `json:"credentialSubject"`
 }
 
-// --- データベースの構造体を修正 ---
+// --- データベースの構造体 (変更なし) ---
 type Credential struct {
 	gorm.Model
 	Credential_Name string `json:"Credential_Name" gorm:"uniqueIndex"`
@@ -43,10 +44,10 @@ type Credential struct {
 	Issuer          string `json:"Issuer"`
 	Start_Time      string `json:"Start_Time"`
 	End_Time        string `json:"End_Time"`
-	VC              string `json:"VC"` // VCを保存するフィールドを追加
+	VC              string `json:"VC"`
 }
 
-// --- VC生成用のヘルパー関数 ---
+// --- VC生成用のヘルパー関数 (変更なし) ---
 func GenerateJWT(header JwtHeader, payload interface{}, prvKey *ecdsa.PrivateKey) (string, error) {
 	headerb, err := json.Marshal(header)
 	if err != nil {
@@ -86,7 +87,6 @@ func GetCredentialsHandler(db *gorm.DB) http.HandlerFunc {
 // --- AddCredentialHandlerを修正 ---
 func AddCredentialHandler(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// 1. リクエストからデータをデコード
 		var requestBody struct {
 			Credential_Name string `json:"credential_name"`
 			Claim           string `json:"claim"`
@@ -97,10 +97,8 @@ func AddCredentialHandler(db *gorm.DB) http.HandlerFunc {
 			return
 		}
 
-		// 2. VC発行者の鍵ペアを準備 (なければ生成)
 		var issuerKey *ecdsa.PrivateKey
 		if _, err := os.Stat(".tmp/issuer_private.key"); os.IsNotExist(err) {
-			// 鍵が存在しない場合、新しく生成して保存
 			issuerKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 			if err != nil {
 				http.Error(w, "Failed to generate issuer key", http.StatusInternalServerError)
@@ -112,23 +110,26 @@ func AddCredentialHandler(db *gorm.DB) http.HandlerFunc {
 				return
 			}
 		} else {
-			// 鍵が存在する場合、読み込む
 			keyBytes, err := os.ReadFile(".tmp/issuer_private.key")
 			if err != nil {
 				http.Error(w, "Failed to read issuer key", http.StatusInternalServerError)
 				return
 			}
-			d := new(ecdsa.PrivateKey)
-			d.D.SetBytes(keyBytes)
-			d.PublicKey.Curve = elliptic.P256()
-			d.PublicKey.X, d.PublicKey.Y = d.PublicKey.Curve.ScalarBaseMult(keyBytes)
-			issuerKey = d
+
+			// --- ★★★ 修正箇所 ★★★ ---
+			// PrivateKeyオブジェクトを正しく再構築する
+			privKey := new(ecdsa.PrivateKey)
+			privKey.D = new(big.Int) // Dフィールドを初期化
+			privKey.D.SetBytes(keyBytes)
+			privKey.PublicKey.Curve = elliptic.P256()
+			privKey.PublicKey.X, privKey.PublicKey.Y = privKey.PublicKey.Curve.ScalarBaseMult(keyBytes)
+			issuerKey = privKey
+			// --- 修正ここまで ---
 		}
 
 		didKey, _ := NewDIDKeyFromPrivateKey(issuerKey)
 		issuerDID := didKey.DID()
 
-		// 3. Credentialオブジェクトを作成 (VCはまだ空)
 		credential := Credential{
 			Credential_Name: requestBody.Credential_Name,
 			Claim:           requestBody.Claim,
@@ -136,10 +137,9 @@ func AddCredentialHandler(db *gorm.DB) http.HandlerFunc {
 			Issuer:          issuerDID,
 			Start_Time:      time.Now().Format(time.RFC3339),
 			End_Time:        time.Now().Add(365 * 24 * time.Hour).Format(time.RFC3339),
-			VC:              "", // この時点では空
+			VC:              "",
 		}
 
-		// 4. まずデータベースに保存
 		if err := db.Create(&credential).Error; err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 				w.Header().Set("Content-Type", "application/json")
@@ -151,13 +151,12 @@ func AddCredentialHandler(db *gorm.DB) http.HandlerFunc {
 			return
 		}
 
-		// 5. VCを生成
 		vcPayload := VerifiableCredentials{
 			Context: []string{"https://www.w3.org/2018/credentials/v1"},
 			Type:    []string{"VerifiableCredential"},
 			Issuer:  issuerDID,
 			Subject: &SubjectClaim{
-				ID:    credential.Holder, // HolderのDIDなどをここに設定
+				ID:    credential.Holder,
 				Claim: credential.Claim,
 			},
 		}
@@ -169,10 +168,8 @@ func AddCredentialHandler(db *gorm.DB) http.HandlerFunc {
 			return
 		}
 
-		// 6. 生成したVCをデータベースに更新
 		db.Model(&credential).Update("VC", jwt)
 
-		// 7. VCを含んだ最終的なCredentialオブジェクトを返す
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(credential)

@@ -2,7 +2,7 @@ package handler
 
 import (
 	"encoding/binary"
-	"fmt"
+	"fmt" // 閉じ引用符を追加
 )
 
 const (
