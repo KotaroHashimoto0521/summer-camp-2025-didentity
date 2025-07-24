@@ -3,7 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
-	"os" // osパッケージをインポート
+	"os"
 
 	"summer-camp-2025-didentity/server/handler"
 
@@ -27,10 +27,8 @@ func corsMiddleware(next http.Handler) http.Handler {
 }
 
 func main() {
-	// 鍵保存用の.tmpディレクトリがなければ作成
 	if _, err := os.Stat(".tmp"); os.IsNotExist(err) {
-		err := os.Mkdir(".tmp", 0755)
-		if err != nil {
+		if err := os.Mkdir(".tmp", 0755); err != nil {
 			log.Fatalf("Failed to create .tmp directory: %v", err)
 		}
 	}
@@ -53,6 +51,14 @@ func main() {
 		case http.MethodPost:
 			handler.AddCredentialHandler(db)(w, r)
 		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	mux.HandleFunc("/verify", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			handler.VerifyVCHandler()(w, r)
+		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})

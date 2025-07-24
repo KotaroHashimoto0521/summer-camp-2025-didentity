@@ -1,8 +1,7 @@
 "use client";
 import { useState, useEffect, FormEvent } from "react";
-import { getCredentials, addCredential, FetchedCredentialType, NewCredentialPayload } from '../lib/api';
+import { getCredentials, addCredential, verifyCredential, FetchedCredentialType, NewCredentialPayload } from '../lib/api';
 
-// フロントエンドで扱うCredentialの型にvcを追加
 interface Credential {
   credential_name: string;
   claim: string;
@@ -10,10 +9,9 @@ interface Credential {
   issuer: string;
   start_Time: string;
   end_Time: string;
-  vc: string; // vcフィールドを追加
+  vc: string;
 }
 
-// バックエンドからのデータをフロントエンド用に変換する関数を修正
 function convertFetchedCredentialToCredential(fetchedCredential: FetchedCredentialType): Credential {
   return {
     credential_name: fetchedCredential.Credential_Name,
@@ -22,21 +20,23 @@ function convertFetchedCredentialToCredential(fetchedCredential: FetchedCredenti
     issuer: fetchedCredential.Issuer,
     start_Time: fetchedCredential.Start_Time,
     end_Time: fetchedCredential.End_Time,
-    vc: fetchedCredential.VC || "" // VCフィールドを追加 (存在しない場合は空文字)
+    vc: fetchedCredential.VC || ""
   };
 }
 
 export default function Home() {
   const [credentials, setCredentials] = useState<Credential[]>([]);
-  
   const [formData, setFormData] = useState({
     credential_name: '',
     claim: '',
     holder: ''
   });
-
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [verificationName, setVerificationName] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<{ message: string; color: string } | null>(null);
 
   useEffect(() => {
     const fetchCredentials = async () => {
@@ -95,6 +95,31 @@ export default function Home() {
     }
   };
 
+  const handleVerify = async () => {
+    if (verificationName.trim() === '') {
+      alert('検証したいVCのNameを入力してください。');
+      return;
+    }
+
+    const targetCredential = credentials.find(c => c.credential_name === verificationName);
+    if (!targetCredential || !targetCredential.vc) {
+      alert('指定されたNameのCredentialが見つからないか、VCが存在しません。');
+      return;
+    }
+
+    setIsVerifying(true);
+    setVerificationResult(null);
+
+    try {
+      const result = await verifyCredential(targetCredential.vc);
+      setVerificationResult({ message: result.message, color: 'green' });
+    } catch (error: any) {
+      setVerificationResult({ message: error.message || '検証中にエラーが発生しました。', color: 'red' });
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
   return (
     <main style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
       <div>
@@ -108,7 +133,6 @@ export default function Home() {
               <div><strong>Name:</strong> {credential.credential_name}</div>
               <div><strong>Claim:</strong> {credential.claim}</div>
               <div><strong>Holder:</strong> {credential.holder}</div>
-              {/* VCを表示する項目を追加 */}
               {credential.vc && (
                 <div style={{ marginTop: '0.5rem' }}>
                   <strong>VC:</strong>
@@ -161,8 +185,27 @@ export default function Home() {
           </div>
         </form>
         <hr />
-        <h1>Holder Page</h1>
         <h1>Verifier Page</h1>
+        <div style={{ marginTop: '1rem' }}>
+          <h3>検証したいVCのNameを入力</h3>
+          <input
+            type="text"
+            placeholder="Enter Credential Name to Verify"
+            value={verificationName}
+            onChange={(e) => setVerificationName(e.target.value)}
+            style={{ marginRight: '0.5rem' }}
+          />
+          <button onClick={handleVerify} disabled={isVerifying}>
+            {isVerifying ? '検証中...' : '選択したVCを検証！'}
+          </button>
+          {verificationResult && (
+            <div style={{ marginTop: '1rem', padding: '0.5rem', border: `1px solid ${verificationResult.color}`, color: verificationResult.color, borderRadius: '4px' }}>
+              <strong>検証結果:</strong> {verificationResult.message}
+            </div>
+          )}
+        </div>
+        <hr />
+        <h1>Holder Page</h1>
       </div>
     </main>
   );
