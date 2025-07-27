@@ -63,6 +63,25 @@ func main() {
 		}
 	})
 
+	mux.HandleFunc("/generate-vp", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			handler.GenerateVPHandler()(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// --- ★★★ ここから新規追加 ★★★ ---
+	// VP検証用の新しいエンドポイント
+	mux.HandleFunc("/verify-vp", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			handler.VerifyVPHandler()(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	// --- 追加ここまで ---
+
 	log.Println("Server starting on :8080")
 	if err := http.ListenAndServe(":8080", corsMiddleware(mux)); err != nil {
 		log.Fatal(err)

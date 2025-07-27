@@ -39,9 +39,9 @@ export const addCredential = async (credential: NewCredentialPayload): Promise<F
 
     if (!response.ok) {
         const errorData = await response.json().catch(() => ({ message: 'サーバーからエラーが返されましたが、内容を解析できませんでした。' }));
-        throw { 
+        throw {
             message: errorData.message || '不明なエラーが発生しました。',
-            status: response.status 
+            status: response.status
         };
     }
 
@@ -65,3 +65,42 @@ export const verifyCredential = async (vc: string): Promise<{ message: string }>
 
     return data;
 };
+
+export const generateVp = async (vcs: string[]): Promise<{ vp: string }> => {
+    const response = await fetch('http://localhost:8080/generate-vp', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ vcs: vcs }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.message || 'VP generation failed with an unknown error.');
+    }
+
+    return data;
+};
+
+// --- ★★★ ここから新規追加 ★★★ ---
+// VPを検証するAPIリクエスト
+export const verifyVp = async (vp: string): Promise<{ message: string }> => {
+    const response = await fetch('http://localhost:8080/verify-vp', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ vp: vp }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(data.message || 'VP Verification failed with an unknown error.');
+    }
+
+    return data;
+};
+// --- 追加ここまで ---

@@ -32,6 +32,12 @@ type VerifiableCredentials struct {
 	Issuer  string        `json:"issuer"`
 	Subject *SubjectClaim `json:"credentialSubject"`
 }
+type VerifiablePresentation struct {
+	Context              []string `json:"@context"`
+	Type                 []string `json:"type"`
+	Holder               string   `json:"holder"`
+	VerifiableCredential []string `json:"verifiableCredential"`
+}
 type Credential struct {
 	gorm.Model
 	Credential_Name string `json:"Credential_Name" gorm:"uniqueIndex"`
@@ -67,7 +73,6 @@ func GenerateJWT(header JwtHeader, payload interface{}, prvKey *ecdsa.PrivateKey
 
 // --- ハンドラ関数 ---
 
-// GetCredentialsHandler はすべてのCredentialを取得します
 func GetCredentialsHandler(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var credentials []Credential
@@ -75,12 +80,11 @@ func GetCredentialsHandler(db *gorm.DB) http.HandlerFunc {
 			http.Error(w, "Could not get credentials", http.StatusInternalServerError)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		json.NewEncoder(w).Encode(credentials)
 	}
 }
 
-// AddCredentialHandler は新しいCredentialを追加し、VCを発行します
 func AddCredentialHandler(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var requestBody struct {
@@ -134,7 +138,7 @@ func AddCredentialHandler(db *gorm.DB) http.HandlerFunc {
 
 		if err := db.Create(&credential).Error; err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
-				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Content-Type", "application/json; charset=utf-8")
 				w.WriteHeader(http.StatusConflict)
 				json.NewEncoder(w).Encode(map[string]string{"message": "このCredential Nameは既に使用されています。"})
 				return
@@ -162,13 +166,12 @@ func AddCredentialHandler(db *gorm.DB) http.HandlerFunc {
 
 		db.Model(&credential).Update("VC", jwt)
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(credential)
 	}
 }
 
-// VerifyVCHandler はVCを検証します
 func VerifyVCHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -216,14 +219,141 @@ func VerifyVCHandler() http.HandlerFunc {
 
 		isValid := ecdsa.Verify(&didKey.PublicKey, digest[:], rVal, sVal)
 		if !isValid {
-			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			w.WriteHeader(http.StatusUnauthorized)
 			json.NewEncoder(w).Encode(map[string]string{"message": "VCの署名が無効です (Invalid signature)"})
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{"message": "VCは有効です (VC is valid)"})
 	}
 }
+
+func GenerateVPHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			VCs []string `json:"vcs"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+		if len(req.VCs) == 0 {
+			http.Error(w, "VCs are required", http.StatusBadRequest)
+			return
+		}
+
+		var holderKey *ecdsa.PrivateKey
+		if _, err := os.Stat(".tmp/holder_private.key"); os.IsNotExist(err) {
+			holderKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+			if err != nil {
+				http.Error(w, "Failed to generate holder key", http.StatusInternalServerError)
+				return
+			}
+			keyBytes := holderKey.D.Bytes()
+			if err := os.WriteFile(".tmp/holder_private.key", keyBytes, 0600); err != nil {
+				http.Error(w, "Failed to save holder key", http.StatusInternalServerError)
+				return
+			}
+		} else {
+			keyBytes, err := os.ReadFile(".tmp/holder_private.key")
+			if err != nil {
+				http.Error(w, "Failed to read holder key", http.StatusInternalServerError)
+				return
+			}
+			privKey := new(ecdsa.PrivateKey)
+			privKey.D = new(big.Int)
+			privKey.D.SetBytes(keyBytes)
+			privKey.PublicKey.Curve = elliptic.P256()
+			privKey.PublicKey.X, privKey.PublicKey.Y = privKey.PublicKey.Curve.ScalarBaseMult(keyBytes)
+			holderKey = privKey
+		}
+
+		didKey, _ := NewDIDKeyFromPrivateKey(holderKey)
+		holderDID := didKey.DID()
+
+		vpPayload := VerifiablePresentation{
+			Context:              []string{"https://www.w3.org/2018/credentials/v1"},
+			Type:                 []string{"VerifiablePresentation"},
+			Holder:               holderDID,
+			VerifiableCredential: req.VCs,
+		}
+
+		header := JwtHeader{Kid: holderDID}
+		jwt, err := GenerateJWT(header, vpPayload, holderKey)
+		if err != nil {
+			log.Printf("Failed to generate VP JWT: %v", err)
+			http.Error(w, "Failed to generate VP", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]string{"vp": jwt})
+	}
+}
+
+// --- ★★★ ここから新規追加 ★★★ ---
+// VerifyVPHandler はVPを検証するハンドラ
+func VerifyVPHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			VP string `json:"vp"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		parts := strings.Split(req.VP, ".")
+		if len(parts) != 3 {
+			http.Error(w, "Invalid VP format", http.StatusBadRequest)
+			return
+		}
+		header, payload, sig := parts[0], parts[1], parts[2]
+
+		headerBytes, err := base64.RawURLEncoding.DecodeString(header)
+		if err != nil {
+			http.Error(w, "Failed to decode VP header", http.StatusBadRequest)
+			return
+		}
+		var h JwtHeader
+		if err := json.Unmarshal(headerBytes, &h); err != nil {
+			http.Error(w, "Failed to parse VP header", http.StatusBadRequest)
+			return
+		}
+
+		didKey, err := NewDIDKeyFromDID(h.Kid)
+		if err != nil {
+			http.Error(w, "Failed to create key from DID for VP", http.StatusInternalServerError)
+			return
+		}
+
+		msg := fmt.Sprintf("%s.%s", header, payload)
+		digest := sha256.Sum256([]byte(msg))
+		sigBytes, err := base64.RawURLEncoding.DecodeString(sig)
+		if err != nil {
+			http.Error(w, "Failed to decode VP signature", http.StatusBadRequest)
+			return
+		}
+		rBytes := sigBytes[:len(sigBytes)/2]
+		sBytes := sigBytes[len(sigBytes)/2:]
+		rVal, sVal := new(big.Int).SetBytes(rBytes), new(big.Int).SetBytes(sBytes)
+
+		isValid := ecdsa.Verify(&didKey.PublicKey, digest[:], rVal, sVal)
+		if !isValid {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]string{"message": "VPの署名が無効です (Invalid signature)"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "VPは有効です (VP is valid)"})
+	}
+}
+
+// --- 追加ここまで ---
