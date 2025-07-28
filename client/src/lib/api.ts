@@ -1,9 +1,13 @@
+// --- データ型定義 ---
+
+// フロントエンドからバックエンドへ新しいCredentialを作成する際に送信するデータの型
 export interface NewCredentialPayload {
   credential_name: string;
   claim: string;
   holder: string;
 }
 
+// バックエンドからフロントエンドへ返されるCredentialデータの型 (Goの構造体フィールド名に準拠)
 export type FetchedCredentialType = {
   Credential_Name: string;
   Claim: string;
@@ -14,6 +18,13 @@ export type FetchedCredentialType = {
   VC: string;
 }
 
+
+// APIクライアント関数
+
+/**
+ * サーバーに保存されているすべてのCredentialを取得する関数
+ * @returns Credentialデータの配列を解決するPromise
+ */
 export const getCredentials = async (): Promise<FetchedCredentialType[]> => {
     try {
         const response = await fetch('http://localhost:8080/credentials');
@@ -28,6 +39,11 @@ export const getCredentials = async (): Promise<FetchedCredentialType[]> => {
     }
 };
 
+/**
+ * 新しいCredentialを作成し、VCを発行するようサーバーにリクエストする関数
+ * @param credential - 作成するCredentialの情報
+ * @returns 作成されたCredentialデータ（VCを含む）を解決するPromise
+ */
 export const addCredential = async (credential: NewCredentialPayload): Promise<FetchedCredentialType> => {
     const response = await fetch('http://localhost:8080/credentials', {
         method: 'POST',
@@ -48,6 +64,11 @@ export const addCredential = async (credential: NewCredentialPayload): Promise<F
     return response.json();
 };
 
+/**
+ * 指定されたVC（Verifiable Credential）を検証するようサーバーにリクエストする関数
+ * @param vc - 検証対象のVC (JWT形式の文字列)
+ * @returns 検証結果のメッセージを解決するPromise
+ */
 export const verifyCredential = async (vc: string): Promise<{ message: string }> => {
     const response = await fetch('http://localhost:8080/verify', {
         method: 'POST',
@@ -66,6 +87,11 @@ export const verifyCredential = async (vc: string): Promise<{ message: string }>
     return data;
 };
 
+/**
+ * 指定されたVCの配列からVP（Verifiable Presentation）を生成するようサーバーにリクエストする関数
+ * @param vcs - VPに含めるVCの配列
+ * @returns 生成されたVP（JWT形式の文字列）を解決するPromise
+ */
 export const generateVp = async (vcs: string[]): Promise<{ vp: string }> => {
     const response = await fetch('http://localhost:8080/generate-vp', {
         method: 'POST',
@@ -84,8 +110,11 @@ export const generateVp = async (vcs: string[]): Promise<{ vp: string }> => {
     return data;
 };
 
-// --- ★★★ ここから新規追加 ★★★ ---
-// VPを検証するAPIリクエスト
+/**
+ * 指定されたVP（Verifiable Presentation）を検証するようサーバーにリクエストする関数
+ * @param vp - 検証対象のVP (JWT形式の文字列)
+ * @returns 検証結果のメッセージを解決するPromise
+ */
 export const verifyVp = async (vp: string): Promise<{ message: string }> => {
     const response = await fetch('http://localhost:8080/verify-vp', {
         method: 'POST',
@@ -103,4 +132,3 @@ export const verifyVp = async (vp: string): Promise<{ message: string }> => {
 
     return data;
 };
-// --- 追加ここまで ---

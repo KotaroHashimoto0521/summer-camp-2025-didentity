@@ -2,7 +2,9 @@
 import { useState, useEffect, FormEvent } from "react";
 import { getCredentials, addCredential, verifyCredential, generateVp, verifyVp, FetchedCredentialType, NewCredentialPayload } from '../lib/api';
 
-// フロントエンドで扱うCredentialの型定義
+// データ型定義
+
+// フロントエンドで扱うCredentialのデータ構造を定義するインターフェース
 interface Credential {
   credential_name: string;
   claim: string;
@@ -13,14 +15,21 @@ interface Credential {
   vc: string;
 }
 
-// VPの型定義
+// フロントエンドで扱うVPのデータ構造を定義するインターフェース
 interface VP {
   name: string;
   vp: string;
-  includedVcNames: string[]; 
+  includedVcNames: string[]; // VPに含まれるVCの名前を保持
 }
 
-// バックエンドからのデータをフロントエンド用に変換する関数
+
+// ヘルパー関数
+
+/**
+ * バックエンドから取得したデータをフロントエンド用のキャメルケース形式に変換する関数
+ * @param fetchedCredential - バックエンドから返されたパスカルケースのCredentialデータ
+ * @returns フロントエンドで扱うキャメルケースのCredentialデータ
+ */
 function convertFetchedCredentialToCredential(fetchedCredential: FetchedCredentialType): Credential {
   return {
     credential_name: fetchedCredential.Credential_Name,
@@ -33,25 +42,49 @@ function convertFetchedCredentialToCredential(fetchedCredential: FetchedCredenti
   };
 }
 
+
+// メインコンポーネント
+
 export default function Home() {
-  // --- State定義 ---
+  // State定義
+  // アプリケーション全体の状態を管理するReact Stateフック
+
+  // 全Credentialのリストを保持
   const [credentials, setCredentials] = useState<Credential[]>([]);
+  // IssuerのVC発行フォームの入力値を保持
   const [formData, setFormData] = useState({ credential_name: '', claim: '', holder: '' });
+  // VerifierがVCを検証する際に入力するVC Nameを保持
   const [verificationName, setVerificationName] = useState('');
+  // VC検証処理中のローディング状態を管理
   const [isVerifying, setIsVerifying] = useState(false);
+  // VC検証結果のメッセージと色を保持
   const [verificationResult, setVerificationResult] = useState<{ message: string; color: string } | null>(null);
+  // Holderページで選択されたHolder名を保持
   const [selectedHolder, setSelectedHolder] = useState('');
+  // データ取得中のグローバルなローディング状態を管理
   const [isLoading, setIsLoading] = useState(true);
+  // データ取得時のエラーメッセージを保持
   const [error, setError] = useState<string | null>(null);
+  // VPに含めるために選択されたVCのリスト（credential_nameの配列）を保持
   const [vcsForVp, setVcsForVp] = useState<string[]>([]);
+  // 発行済みのVPのリスト（名前とVP文字列のオブジェクト配列）を保持
   const [generatedVps, setGeneratedVps] = useState<VP[]>([]);
+  // VP発行処理中のローディング状態を管理
   const [isGeneratingVp, setIsGeneratingVp] = useState(false);
+  // VP発行時に入力するVP Nameを保持
   const [vpNameToCreate, setVpNameToCreate] = useState('');
+  // VerifierがVPを検証する際に入力するVP Nameを保持
   const [vpNameToVerify, setVpNameToVerify] = useState('');
+  // VP検証処理中のローディング状態を管理
   const [isVerifyingVp, setIsVerifyingVp] = useState(false);
+  // VP検証結果のメッセージと色を保持
   const [vpVerificationResult, setVpVerificationResult] = useState<{ message: string; color: string } | null>(null);
 
-  // --- Effect定義 ---
+  
+  // Effect定義
+  // 副作用（APIからのデータ取得など）を管理するReact Effectフック
+
+  // コンポーネントの初回レンダリング時に、サーバーから全Credentialリストを取得する
   useEffect(() => {
     const fetchCredentials = async () => {
       try {
@@ -74,12 +107,23 @@ export default function Home() {
     fetchCredentials();
   }, []);
 
-  // --- ハンドラ関数定義 ---
+  
+  // ハンドラ関数定義
+  // ユーザーの操作（入力、クリックなど）に応じて実行される関数群
+
+  /**
+   * IssuerのVC発行フォームの入力値をStateに反映させるハンドラ
+   * @param e - input要素のonChangeイベント
+   */
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { id, value } = e.target;
     setFormData(prev => ({ ...prev, [id]: value }));
   };
 
+  /**
+   * IssuerがVC発行フォームを送信したときの処理を行うハンドラ
+   * @param e - form要素のonSubmitイベント
+   */
   const handleAddCredential = async (e: FormEvent) => {
     e.preventDefault();
     if (formData.credential_name.trim() === '' || formData.claim.trim() === '' || formData.holder.trim() === '') {
@@ -106,6 +150,9 @@ export default function Home() {
     }
   };
 
+  /**
+   * VerifierがVCを検証するボタンをクリックしたときの処理を行うハンドラ
+   */
   const handleVerify = async () => {
     if (verificationName.trim() === '') {
       alert('検証したいVCのNameを入力してください。');
@@ -128,6 +175,10 @@ export default function Home() {
     }
   };
 
+  /**
+   * HolderページでVPに含めるVCを選択（クリック）したときの処理を行うハンドラ
+   * @param credentialName - 選択されたVCのcredential_name
+   */
   const handleSelectVcForVp = (credentialName: string) => {
     setVcsForVp(prevSelected => {
       if (prevSelected.includes(credentialName)) {
@@ -138,6 +189,9 @@ export default function Home() {
     });
   };
 
+  /**
+   * VP発行ボタンをクリックしたときの処理を行うハンドラ
+   */
   const handleGenerateVp = async () => {
     if (vcsForVp.length === 0) {
       alert('VPに含めるVCを1つ以上選択してください。');
@@ -163,6 +217,9 @@ export default function Home() {
     }
   };
 
+  /**
+   * VerifierがVPを検証するボタンをクリックしたときの処理を行うハンドラ
+   */
   const handleVerifyVp = async () => {
     if (vpNameToVerify.trim() === '') {
       alert('検証したいVPのNameを入力してください。');
@@ -185,28 +242,38 @@ export default function Home() {
     }
   };
 
+  
+  // 派生状態の計算
+  // Stateから計算して導き出される値をレンダリング直前に定義
+  
+  // 選択されたHolder名に基づいて、表示するCredentialリストをフィルタリング
   const filteredCredentials = selectedHolder.trim() === ''
     ? []
     : credentials.filter(cred =>
         cred.holder.toLowerCase() === selectedHolder.trim().toLowerCase()
       );
 
-  // --- スタイル定義 ---
+      
+  // スタイル定義
+  // JSX内で使用する共通のスタイルオブジェクト
+  
   const buttonStyle = {
     padding: '12px 24px',
     fontSize: '18px',
     cursor: 'pointer'
   };
 
-  // --- JSX (画面表示) ---
+
+  // JSX (画面描画)
+  // ユーザーインターフェースを定義する
   return (
     <main style={{ padding: '2rem', fontFamily: 'sans-serif' }}>
       <div>
+        {/* Issuer Page */}
         <h1 style={{ color: 'green'}}>Issuer Page</h1>
         <h2>VC 発行フォーム</h2>
         <form onSubmit={handleAddCredential}>
           <div style={{ border: '2px solid #ccc', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
-            {/* ★★★ 修正箇所 ★★★ */}
             <ol style={{ paddingLeft: '20px' }}>
               <li>
                 <h3>Credential Nameを入力</h3>
@@ -214,11 +281,11 @@ export default function Home() {
               </li>
               <li>
                 <h3>Claimを入力</h3>
-                <input id="credential_name" type="text" placeholder="Enter Claim" value={formData.credential_name} onChange={handleInputChange} />
+                <input id="claim" type="text" placeholder="Enter Claim" value={formData.claim} onChange={handleInputChange} />
               </li>
               <li>
                 <h3>Holderを入力</h3>
-                <input id="credential_name" type="text" placeholder="Enter Holder" value={formData.credential_name} onChange={handleInputChange} />
+                <input id="holder" type="text" placeholder="Enter Holder" value={formData.holder} onChange={handleInputChange} />
               </li>
             </ol>
             <button type="submit" style={{ ...buttonStyle, marginTop: '1rem' }}>IssuerがVCを発行！</button>
@@ -227,6 +294,7 @@ export default function Home() {
         
         <hr style={{ margin: '5rem 0' }} />
 
+        {/* Holder Page */}
         <h1 style={{ color: 'green' }}>Holder Page</h1>
         <h2>Already issued VCs List</h2>
         {isLoading && <p>Loading...</p>}
@@ -248,7 +316,6 @@ export default function Home() {
         </ul>
 
         <h2>VP 発行フォーム</h2>
-        {/* ★★★ 修正箇所 (順序付きリストに変更) ★★★ */}
         <div style={{ border: '2px solid #ccc', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
           <ol style={{ paddingLeft: '20px' }}>
             <li>
@@ -296,7 +363,6 @@ export default function Home() {
             {generatedVps.map((vpData, index) => (
               <li key={index} style={{ border: '1px solid #28a745', borderRadius: '8px', padding: '1rem', marginBottom: '1rem' }}>
                 <div><strong>Credential Name: {vpData.name}</strong></div>
-                {/* ★★★ 修正箇所 ★★★ */}
                 <div style={{ marginTop: '0.5rem' }}>
                   <strong>Selected VCs:</strong> {vpData.includedVcNames.join(', ')}
                 </div>
@@ -312,6 +378,7 @@ export default function Home() {
 
         <hr style={{ margin: '5rem 0' }} />
 
+        {/* Verifier Page */}
         <h1 style={{ color: 'green' }}>Verifier Page</h1>
         <div style={{ marginTop: '1rem' }}>
           <h3>検証したいVCのCredential Nameを入力</h3>

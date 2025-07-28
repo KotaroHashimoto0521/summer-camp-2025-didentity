@@ -18,26 +18,41 @@ import (
 	"gorm.io/gorm"
 )
 
-// --- 構造体定義 ---
+// 構造体定義
+
+// JwtHeader はJWTのヘッダー部分を表す構造体です。
 type JwtHeader struct {
 	Kid string `json:"kid"`
 }
+
+// SubjectClaim はVCのcredentialSubject部分を表す構造体です。
+// "holder"フィールドを追加します。
 type SubjectClaim struct {
-	ID    string `json:"id"`
-	Claim string `json:"claim"`
+	ID     string `json:"id"`
+	Claim  string `json:"claim"`
+	Holder string `json:"holder"`
 }
+
+// VerifiableCredentials はW3CのVCデータモデルに準拠した構造体です。
+// "Start_Time"と"End_Time"フィールドを追加します。
 type VerifiableCredentials struct {
-	Context []string      `json:"@context"`
-	Type    []string      `json:"type"`
-	Issuer  string        `json:"issuer"`
-	Subject *SubjectClaim `json:"credentialSubject"`
+	Context    []string      `json:"@context"`
+	Type       []string      `json:"type"`
+	Issuer     string        `json:"issuer"`
+	Start_Time string        `json:"Start_Time"`
+	End_Time   string        `json:"End_Time"`
+	Subject    *SubjectClaim `json:"credentialSubject"`
 }
+
+// VerifiablePresentation はW3CのVPデータモデルに準拠した構造体です。
 type VerifiablePresentation struct {
 	Context              []string `json:"@context"`
 	Type                 []string `json:"type"`
 	Holder               string   `json:"holder"`
 	VerifiableCredential []string `json:"verifiableCredential"`
 }
+
+// Credential はGORMがデータベースとマッピングするためのモデル構造体です。
 type Credential struct {
 	gorm.Model
 	Credential_Name string `json:"Credential_Name" gorm:"uniqueIndex"`
@@ -49,7 +64,9 @@ type Credential struct {
 	VC              string `json:"VC"`
 }
 
-// --- ヘルパー関数 ---
+// ヘルパー関数
+
+// GenerateJWT は、与えられたヘッダー、ペイロード、秘密鍵からJWTを生成する汎用関数です。
 func GenerateJWT(header JwtHeader, payload interface{}, prvKey *ecdsa.PrivateKey) (string, error) {
 	headerb, err := json.Marshal(header)
 	if err != nil {
@@ -71,8 +88,9 @@ func GenerateJWT(header JwtHeader, payload interface{}, prvKey *ecdsa.PrivateKey
 	return jwt, nil
 }
 
-// --- ハンドラ関数 ---
+// ハンドラ関数
 
+// GetCredentialsHandler は、データベースに保存されている全てのCredentialを取得して返します。
 func GetCredentialsHandler(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var credentials []Credential
@@ -85,6 +103,7 @@ func GetCredentialsHandler(db *gorm.DB) http.HandlerFunc {
 	}
 }
 
+// AddCredentialHandler は、VCペイロードの生成ロジックを修正します。
 func AddCredentialHandler(db *gorm.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var requestBody struct {
@@ -147,13 +166,17 @@ func AddCredentialHandler(db *gorm.DB) http.HandlerFunc {
 			return
 		}
 
+		// VCペイロードの生成ロジックを新しい構造に合わせて変更
 		vcPayload := VerifiableCredentials{
-			Context: []string{"https://www.w3.org/2018/credentials/v1"},
-			Type:    []string{"VerifiableCredential"},
-			Issuer:  issuerDID,
+			Context:    []string{"https://www.w3.org/2018/credentials/v1"},
+			Type:       []string{"VerifiableCredential"},
+			Issuer:     issuerDID,
+			Start_Time: credential.Start_Time,
+			End_Time:   credential.End_Time,
 			Subject: &SubjectClaim{
-				ID:    credential.Holder,
-				Claim: credential.Claim,
+				ID:     credential.Credential_Name, // "id" に Credential_Name を設定
+				Claim:  credential.Claim,
+				Holder: credential.Holder, // "holder" を追加
 			},
 		}
 		header := JwtHeader{Kid: issuerDID}
@@ -172,6 +195,7 @@ func AddCredentialHandler(db *gorm.DB) http.HandlerFunc {
 	}
 }
 
+// VerifyVCHandler は、受け取ったVCの電子署名を検証します。
 func VerifyVCHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -231,6 +255,7 @@ func VerifyVCHandler() http.HandlerFunc {
 	}
 }
 
+// GenerateVPHandler は、受け取ったVCの配列からVPを発行します。
 func GenerateVPHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -295,8 +320,7 @@ func GenerateVPHandler() http.HandlerFunc {
 	}
 }
 
-// --- ★★★ ここから新規追加 ★★★ ---
-// VerifyVPHandler はVPを検証するハンドラ
+// VerifyVPHandler は、受け取ったVPの電子署名を検証します。
 func VerifyVPHandler() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
@@ -355,5 +379,3 @@ func VerifyVPHandler() http.HandlerFunc {
 		json.NewEncoder(w).Encode(map[string]string{"message": "VPは有効です (VP is valid)"})
 	}
 }
-
-// --- 追加ここまで ---

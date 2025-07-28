@@ -9,11 +9,14 @@ import (
 	"github.com/btcsuite/btcd/btcutil/base58"
 )
 
+// DIDKey は、DIDに関連付けられた公開鍵と秘密鍵のペアを保持する構造体です。
 type DIDKey struct {
 	PublicKey  ecdsa.PublicKey
 	PrivateKey *ecdsa.PrivateKey
 }
 
+// NewDIDKeyFromDID は、"did:key"形式の文字列からDIDKeyオブジェクトを生成します。
+// DID文字列を解析し、公開鍵を復元します。秘密鍵は含まれません。
 func NewDIDKeyFromDID(did string) (*DIDKey, error) {
 	splited := strings.Split(did, ":")
 	if len(splited) != 3 {
@@ -62,6 +65,7 @@ func NewDIDKeyFromDID(did string) (*DIDKey, error) {
 	}, nil
 }
 
+// NewDIDKeyFromPrivateKey は、ecdsa.PrivateKeyオブジェクトからDIDKeyオブジェクトを生成します。
 func NewDIDKeyFromPrivateKey(privateKey *ecdsa.PrivateKey) (*DIDKey, error) {
 	return &DIDKey{
 		PublicKey:  privateKey.PublicKey,
@@ -69,6 +73,7 @@ func NewDIDKeyFromPrivateKey(privateKey *ecdsa.PrivateKey) (*DIDKey, error) {
 	}, nil
 }
 
+// DID は、DIDKeyの公開鍵から"did:key"形式の文字列を生成して返します。
 func (did DIDKey) DID() string {
 	encoded := base58.Encode(
 		EncodeMulticodec(
